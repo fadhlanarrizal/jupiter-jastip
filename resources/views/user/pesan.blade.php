@@ -29,7 +29,7 @@
                         if (this.jenis === 'camilan-kiloan') {
                             return this.tarifCamilanPerKg * this.berat;
                         } else if (this.jenis === 'camilan-satuan') {
-                            return this.tarifCamilanPerKg * this.jumlah * (this.jumlah * this.berat);
+                            return this.tarifCamilanPerKg * (this.jumlah * this.berat);
                         } else if (this.jenis === 'non-camilan') {
                             if (this.totalHarga > 100000) {
                                 return this.totalHarga * 0.2;

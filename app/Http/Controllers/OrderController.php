@@ -15,7 +15,7 @@ class OrderController extends Controller
             return $harga * $berat + 30000 * $berat;
         } elseif ($jenis === 'camilan-satuan') {
             $totalBerat = $berat * $jumlah;
-            return $harga * $jumlah + 30000 * $totalBerat;
+            return 30000 * $totalBerat ;
         } else { // non-camilan
             $total = $harga * $jumlah;
             $persen = $harga > 100000 ? 0.2 : 0.3;
