@@ -12,7 +12,7 @@ class OrderController extends Controller
     private function hitungBiaya($jenis, $harga, $jumlah = 0, $berat = 0)
     {
         if ($jenis === 'camilan-kiloan') {
-            return $harga * $berat + 30000 * $berat;
+            return $berat * 30000;
         } elseif ($jenis === 'camilan-satuan') {
             $totalBerat = $berat * $jumlah;
             return 30000 * $totalBerat ;
