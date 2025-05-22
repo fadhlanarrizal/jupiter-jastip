@@ -13,14 +13,16 @@ return new class extends Migration
     {
         Schema::create('orders', function (Blueprint $table) {
             $table->id();
+            $table->string('nama_pemesan');
+            $table->string('no_hp');
             $table->string('nama_barang');
-            $table->enum('jenis', ['camilan', 'non-camilan']);
-            $table->float('berat')->nullable(); // hanya untuk camilan
-            $table->integer('harga')->nullable(); // untuk non-camilan
-            $table->integer('jumlah')->nullable(); // untuk non-camilan
-            $table->text('catatan')->nullable();
-            $table->integer('biaya'); // hasil perhitungan
+            $table->enum('jenis', ['camilan-kiloan', 'camilan-satuan', 'non-camilan']);
             $table->enum('status', ['pending', 'lunas', 'pengiriman', 'diterima'])->default('pending');
+            $table->integer('harga'); // harga per barang atau per kg
+            $table->float('berat')->nullable(); // wajib untuk camilan
+            $table->integer('jumlah')->nullable(); // jumlah item (wajib untuk camilan-satuan & non-camilan)
+            $table->integer('biaya')->default(0);
+            $table->text('catatan')->nullable();
             $table->timestamps();
         });
     }

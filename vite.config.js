@@ -2,13 +2,11 @@ import { defineConfig } from 'vite';
 import laravel from 'laravel-vite-plugin';
 
 export default defineConfig({
-    server: {
-        https: true // opsional, tapi kalau lokal bisa abaikan
-    },
     plugins: [
         laravel({
             input: ['resources/css/app.css', 'resources/js/app.js'],
             refresh: true,
         }),
     ],
+    base: process.env.ASSET_URL || '/', // Ini penting agar asset pakai URL HTTPS
 });

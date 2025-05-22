@@ -3,13 +3,26 @@
 namespace App\Http\Controllers;
 
 use App\Models\Order;
-
 use Illuminate\Http\Request;
 use Barryvdh\DomPDF\Facade\Pdf;
 
-
 class OrderController extends Controller
 {
+
+    private function hitungBiaya($jenis, $harga, $jumlah = 0, $berat = 0)
+    {
+        if ($jenis === 'camilan-kiloan') {
+            return $harga * $berat + 30000 * $berat;
+        } elseif ($jenis === 'camilan-satuan') {
+            $totalBerat = $berat * $jumlah;
+            return $harga * $jumlah + 30000 * $totalBerat;
+        } else { // non-camilan
+            $total = $harga * $jumlah;
+            $persen = $harga > 100000 ? 0.2 : 0.3;
+            return intval($total * $persen);
+        }
+    }
+
 
     private function getRekapPerPemesan($orders)
     {
@@ -18,9 +31,11 @@ class OrderController extends Controller
             $totalJastip = 0;
 
             $detail = $items->map(function ($item) use (&$totalBelanja, &$totalJastip) {
-                $harga = $item->jenis == 'camilan'
-                    ? $item->harga * $item->berat
-                    : $item->harga * $item->jumlah;
+                $harga = match ($item->jenis) {
+                    'camilan-kiloan' => $item->harga * $item->berat,
+                    'camilan-satuan', 'non-camilan' => $item->harga * $item->jumlah,
+                    default => 0,
+                };
 
                 $totalBelanja += $harga;
                 $totalJastip += $item->biaya;
@@ -33,6 +48,7 @@ class OrderController extends Controller
                     'jumlah' => $item->jumlah,
                     'total' => $harga,
                     'jastip' => $item->biaya,
+                    'catatan' => $item->catatan,
                 ];
             });
 
@@ -53,9 +69,11 @@ class OrderController extends Controller
             $totalBerat = $items->sum('berat');
             $totalJumlah = $items->sum('jumlah');
             $totalHarga = $items->reduce(function ($carry, $item) {
-                return $carry + (($item->jenis == 'camilan')
-                    ? $item->harga * $item->berat
-                    : $item->harga * $item->jumlah);
+                return $carry + match ($item->jenis) {
+                    'camilan-kiloan' => $item->harga * $item->berat,
+                    'camilan-satuan', 'non-camilan' => $item->harga * $item->jumlah,
+                    default => 0,
+                };
             }, 0);
             $totalJastip = $items->sum('biaya');
             $pemesan = $items->pluck('nama_pemesan')->unique();
@@ -106,12 +124,11 @@ class OrderController extends Controller
         return view('user.dashboard', compact('perPemesan', 'perBarang', 'filter'));
     }
 
-
     public function store(Request $request)
     {
         $request->validate([
             'nama_barang' => 'required|string',
-            'jenis' => 'required|in:camilan,non-camilan',
+            'jenis' => 'required|in:camilan-kiloan,camilan-satuan,non-camilan',
             'catatan' => 'nullable|string',
             'nama_pemesan' => 'required|string',
             'no_hp' => 'required|string',
@@ -119,33 +136,32 @@ class OrderController extends Controller
 
         $jenis = $request->jenis;
         $biaya = 0;
-        $harga = null;
-        $jumlah = null;
-        $berat = null;
+        $harga = $request->harga;
+        $jumlah = $jenis !== 'camilan-kiloan' ? $request->jumlah : null;
+        $berat = $jenis !== 'non-camilan' ? $request->berat : null;
 
-        if ($jenis === 'camilan') {
+
+
+        if ($jenis === 'camilan-kiloan') {
             $request->validate([
                 'berat' => 'required|numeric|min:0.1',
                 'harga' => 'required|numeric|min:1',
             ]);
 
-            $berat = $request->berat;
-            $harga = $request->harga;
-
-            $totalHargaBarang = $harga * $berat;
-            $biayaJastip = 30000 * $berat;
-            $biaya = $totalHargaBarang + $biayaJastip;
-        } else {
+            $biaya = $this->hitungBiaya($jenis, $harga, $jumlah, $berat);
+        } elseif ($jenis === 'camilan-satuan') {
+            $request->validate([
+                'berat' => 'required|numeric|min:0.1', // berat per satuan
+                'jumlah' => 'required|integer|min:1',
+                'harga' => 'required|numeric|min:1',
+            ]);
+            $biaya = $this->hitungBiaya($jenis, $harga, $jumlah, $berat);
+        } else { // non-camilan
             $request->validate([
                 'harga' => 'required|numeric|min:1',
                 'jumlah' => 'required|integer|min:1',
             ]);
-
-            $harga = $request->harga;
-            $jumlah = $request->jumlah;
-            $totalHarga = $harga * $jumlah;
-            $persen = $harga > 100000 ? 0.2 : 0.3;
-            $biaya = intval($totalHarga * $persen);
+            $biaya = $this->hitungBiaya($jenis, $harga, $jumlah, $berat);
         }
 
         Order::create([
@@ -158,9 +174,8 @@ class OrderController extends Controller
             'biaya' => $biaya,
             'nama_pemesan' => $request->nama_pemesan,
             'no_hp' => $request->no_hp,
-            'status' => $request->status, // default status saat store
+            'status' => $request->status ?? 'pending', // default status jika tidak ada input
         ]);
-
 
         return redirect()->route('pesan.riwayat')->with('success', 'Pesanan berhasil dikirim!');
     }
@@ -174,7 +189,7 @@ class OrderController extends Controller
     {
         $request->validate([
             'nama_barang' => 'required|string',
-            'jenis' => 'required|in:camilan,non-camilan',
+            'jenis' => 'required|in:camilan-kiloan,camilan-satuan,non-camilan',
             'catatan' => 'nullable|string',
             'nama_pemesan' => 'required|string',
             'no_hp' => 'required|string',
@@ -183,33 +198,32 @@ class OrderController extends Controller
 
         $jenis = $request->jenis;
         $biaya = 0;
-        $harga = null;
-        $jumlah = null;
-        $berat = null;
+        $harga = $request->harga;
+        $jumlah = $jenis !== 'camilan-kiloan' ? $request->jumlah : null;
+        $berat = $jenis !== 'non-camilan' ? $request->berat : null;
 
-        if ($jenis === 'camilan') {
+
+
+        if ($jenis === 'camilan-kiloan') {
             $request->validate([
                 'berat' => 'required|numeric|min:0.1',
                 'harga' => 'required|numeric|min:1',
             ]);
 
-            $berat = $request->berat;
-            $harga = $request->harga;
-
-            $totalHargaBarang = $harga * $berat;
-            $biayaJastip = 30000 * $berat;
-            $biaya = $totalHargaBarang + $biayaJastip;
-        } else {
+            $biaya = $this->hitungBiaya($jenis, $harga, $jumlah, $berat);
+        } elseif ($jenis === 'camilan-satuan') {
+            $request->validate([
+                'berat' => 'required|numeric|min:0.1',
+                'jumlah' => 'required|integer|min:1',
+                'harga' => 'required|numeric|min:1',
+            ]);
+            $biaya = $this->hitungBiaya($jenis, $harga, $jumlah, $berat);
+        } else { // non-camilan
             $request->validate([
                 'harga' => 'required|numeric|min:1',
                 'jumlah' => 'required|integer|min:1',
             ]);
-
-            $harga = $request->harga;
-            $jumlah = $request->jumlah;
-            $totalHarga = $harga * $jumlah;
-            $persen = $harga > 100000 ? 0.2 : 0.3;
-            $biaya = intval($totalHarga * $persen);
+            $biaya = $this->hitungBiaya($jenis, $harga, $jumlah, $berat);
         }
 
         $order->update([
@@ -222,7 +236,7 @@ class OrderController extends Controller
             'biaya' => $biaya,
             'nama_pemesan' => $request->nama_pemesan,
             'no_hp' => $request->no_hp,
-            'status' => $request->status, // disimpan saat update
+            'status' => $request->status,
         ]);
 
         return redirect()->route('pesan.riwayat')->with('success', 'Pesanan berhasil diperbarui!');
@@ -234,7 +248,6 @@ class OrderController extends Controller
         $orders = Order::latest()->get();
         return view('user.riwayat', compact('orders'));
     }
-
 
     public function exportPdf(Request $request)
     {
